@@ -112,12 +112,10 @@ final class ReceiverEngine {
         continuous = withVideo;microphoneAllowed=withVideo&&withMicrophone;
         reconnect.reset();
         sequence = context.getSharedPreferences("identity", 0).getInt("discovery_sequence", 0) & 255;
-        context.getSharedPreferences("identity", 0).edit().putInt("discovery_sequence", (sequence + 1) & 255).apply();
         int token = generation.incrementAndGet();
         status.begin(token);
         final byte[] payload = DiscoveryBeacon.encode(pendingModel, sequence);
         log("FDEE 实验开始：型号 " + pendingModel + "，序号 " + sequence + "；未验证手机识别。");
-        sequence = (sequence + 1) & 255;
         if (withNetwork) {
             P2pHotspot.Events networkEvents = new P2pHotspot.Events() {
                 public void log(String message) { ReceiverEngine.this.log(message); }
