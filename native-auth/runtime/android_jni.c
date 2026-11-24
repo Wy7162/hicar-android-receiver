@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <openssl/sha.h>
 #include "hichain.h"
+#include "huks_adapter.h"
 #include "hks_file_api.h"
 #include "hks_hardware_api.h"
 
@@ -76,6 +77,20 @@ JNIEXPORT jlong JNICALL Java_local_hicarlab_NativeAuth_create(JNIEnv*e,jclass c,
  s->identity.service_type.length=9;memcpy(s->identity.service_type.type,"CarDevice",9);
  s->identity.context=s;s->callbacks=(struct hc_call_back){transmit,params,set_key,result,confirm};
  s->handle=get_instance(&s->identity,role,&s->callbacks);if(!s->handle){memset(s,0,sizeof(*s));free(s);return 0;}return (jlong)(intptr_t)s;
+}
+JNIEXPORT jint JNICALL Java_local_hicarlab_NativeAuth_checkLtpk(JNIEnv*e,jclass c,jstring self){
+ (void)c;if(root_fd<0)return -1;
+ struct session_identity identity;memset(&identity,0,sizeof(identity));
+ identity.package_name.length=16;memcpy(identity.package_name.name,"com.huawei.hicar",16);
+ identity.service_type.length=9;memcpy(identity.service_type.type,"CarDevice",9);
+ struct service_id service_id=generate_service_id(&identity);
+ if(service_id.length==0)return -1;
+ struct hc_auth_id auth_id;memset(&auth_id,0,sizeof(auth_id));
+ auth_id.length=copy_string(e,self,auth_id.auth_id,HC_AUTH_ID_BUFF_LEN);
+ if(!auth_id.length)return -1;
+ struct hc_key_alias alias=generate_key_alias(&service_id,&auth_id,KEY_ALIAS_ACCESSOR_PK);
+ if(alias.length==0)return -1;
+ return check_lt_public_key_exist(&alias)==0?1:0;
 }
 JNIEXPORT jobjectArray JNICALL Java_local_hicarlab_NativeAuth_step(JNIEnv*e,jclass c,jlong handle,jbyteArray data,jint key_length){
  (void)c;Session*s=(Session*)(intptr_t)handle;if(!s)return NULL;

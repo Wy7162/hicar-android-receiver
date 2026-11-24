@@ -67,7 +67,7 @@ final class AuthBusiness implements AutoCloseable {
         if((Integer)op==1){
             if(identified||inner.optBoolean("usb_connection",false))throw new IOException("identity state");
             String peer=inner.getString("deviceId");int size=peer.getBytes(StandardCharsets.UTF_8).length;if(size<1||size>64)throw new IOException("identity length");
-            identifiedPeer=peer;handle=NativeAuth.create(self,peer,pin,2);if(handle==0)throw new IOException("native session");identified=true;
+            identifiedPeer=peer;int ltpk=NativeAuth.checkLtpk(self);events.log("本机长期密钥(LTPK)检查："+(ltpk==1?"存在":ltpk==0?"不存在":"错误"+ltpk)+"。");handle=NativeAuth.create(self,peer,pin,2);if(handle==0)throw new IOException("native session");identified=true;
             JSONObject details=new JSONObject().put("deviceId",self).put("devicename","HiCarLab").put("has_pin",true).put("usb_connection",false).put("CONNECT_ABILITY_KEY","1").put("CAR_MODE_ID",model);
             send(out,envelope(1,details));events.log("已交换实验身份，等待 HiChain 认证；请使用页面显示的六位连接码。");return;
         }
