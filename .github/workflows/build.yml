@@ -1,0 +1,87 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'app/**'
+      - 'native-auth/**'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK platform, build-tools and NDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - name: Install native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends make perl cmake curl
+
+      # 下载并校验固定版本的 mbedtls / openssl / cjson（deviceauth/huks/securec 已随仓库打包）
+      - name: Fetch pinned native dependencies
+        run: python3 native-auth/fetch-deps.py
+
+      # 交叉编译 ARM64 + ARMv7 原生库到 app/native-libs/lib/
+      - name: Build native libraries
+        run: python3 native-auth/build-android.py
+
+      # 默认生成开发签名 APK：app/build/HiCarLab-0.11.1-development.apk
+      - name: Build APK
+        run: bash app/build.sh
+
+      # 可选：用发布 keystore 覆盖签名，得到可直接覆盖安装旧版的 APK。
+      # 在仓库 Settings → Secrets and variables → Actions 添加：
+      #   HICAR_KEYSTORE_B64   release.keystore 的 base64（base64 -w0 release.keystore）
+      #   HICAR_KEY_ALIAS      别名
+      #   HICAR_STORE_PASSWORD / HICAR_KEY_PASSWORD
+      # 未设置这些 secret 时此步跳过，产物仍是开发签名。
+      - name: Release sign (optional)
+        if: ${{ secrets.HICAR_KEYSTORE_B64 != '' }}
+        env:
+          HICAR_STORE_PASSWORD: ${{ secrets.HICAR_STORE_PASSWORD }}
+          HICAR_KEY_PASSWORD: ${{ secrets.HICAR_KEY_PASSWORD }}
+        run: |
+          echo "${{ secrets.HICAR_KEYSTORE_B64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          HICAR_KEYSTORE="$RUNNER_TEMP/release.keystore" \
+          HICAR_KEY_ALIAS="${{ secrets.HICAR_KEY_ALIAS }}" \
+            bash app/build.sh
+
+      - name: Show artifact info
+        run: |
+          ls -l app/build/*.apk
+          sha256sum app/build/*.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HiCarLab-apk
+          path: app/build/*.apk
+          if-no-files-found: error
