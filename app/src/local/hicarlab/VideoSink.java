@@ -33,7 +33,7 @@ final class VideoSink implements AutoCloseable, HiSightClient.Video {
         if(surface!=null&&surface.isValid()){startDecoder();return ready;}
         close();
         // Detached SurfaceTexture requires no Activity or current GL context.
-        texture=new SurfaceTexture(false);texture.setDefaultBufferSize(800,480);
+        texture=new SurfaceTexture(false);texture.setDefaultBufferSize(1920,1080);
         surface=new Surface(texture);visible=false;startDecoder();
         if(!ready)close();
         return ready;
@@ -45,7 +45,7 @@ final class VideoSink implements AutoCloseable, HiSightClient.Video {
             if(!ready)startDecoder();
             DiagnosticLog.add(context,"接收窗口已重新附着；沿用当前视频会话，等待新画面。");return;
         }
-        close();texture=available;texture.setDefaultBufferSize(800,480);surface=new Surface(texture);
+        close();texture=available;texture.setDefaultBufferSize(1920,1080);surface=new Surface(texture);
         owner=new java.lang.ref.WeakReference<>(view);visible=true;startDecoder();
     }
     synchronized boolean detach(TextureView view,SurfaceTexture value){
@@ -60,7 +60,7 @@ final class VideoSink implements AutoCloseable, HiSightClient.Video {
         releaseDecoder();
         try{
             codec=MediaCodec.createDecoderByType("video/avc");
-            MediaFormat format=MediaFormat.createVideoFormat("video/avc",800,480);
+            MediaFormat format=MediaFormat.createVideoFormat("video/avc",1920,1080);
             format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE,HiSightMedia.LIMIT);
             format.setInteger("low-latency",1);
             codec.configure(format,surface,null,0);codec.start();running=true;ready=true;

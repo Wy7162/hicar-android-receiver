@@ -51,7 +51,6 @@ final class HiSightWire implements AutoCloseable {
                 if(size<1||size>65000)throw new IOException("rtsp size");if(buffer.length<size+4)break;
                 byte[] payload=Arrays.copyOfRange(buffer,4,(int)size+4);buffer=Arrays.copyOfRange(buffer,(int)size+4,buffer.length);
                 if(encrypted)payload=cipher.decrypt(payload);
-                events.log("HiSight 报文（已解密）hex="+hex(payload));
                 try{parse(payload,replies);}finally{Arrays.fill(payload,(byte)0);}
             }
             return replies;
@@ -87,7 +86,7 @@ final class HiSightWire implements AutoCloseable {
         }else if(method.equals("GET_PARAMETER")){
             Set<String> requested=new HashSet<>();for(String row:body.split("\r?\n")){String k=row.split(":",2)[0].trim();if(!k.isEmpty())requested.add(k);}
             Map<String,String> caps=new LinkedHashMap<>();caps.put("his_version","1.0");
-            caps.put("his_video_formats","codecs 1;fps 30;gop 30;bitrate 2000000;vbr-min 1000000;vbr-max 3000000;dpi 160;scr-w 800;scr-h 480;width 800;height 480");
+            caps.put("his_video_formats","codecs 1;fps 30;gop 30;bitrate 8000000;vbr-min 3000000;vbr-max 10000000;dpi 160;scr-w 1920;scr-h 1080;width 1920;height 1080");
             caps.put("his_device_type","device_type 4;subtype 0;");
             if(inputEnabled)caps.put("his_uibc_capability","input_category_list=GENERIC;generic_cap_list=left_point_down, left_point_up, left_move, left_key_down, left_key_up;");
             StringBuilder answer=new StringBuilder();for(Map.Entry<String,String> c:caps.entrySet())if(requested.contains(c.getKey()))answer.append(c.getKey()).append(": ").append(c.getValue()).append("\r\n");
@@ -111,11 +110,6 @@ final class HiSightWire implements AutoCloseable {
             if(remote.find()){int input=Integer.parseInt(remote.group(1));if(input<1||input>65535)throw new IOException("rtsp input port");inputPort=input;}
             mediaPort=p;events.log("HiSight 视频端口已协商；仅向本轮已认证手机连接。");
         }
-    }
-    private static String hex(byte[] data){
-        StringBuilder b=new StringBuilder(data.length*2);
-        for(byte n:data)b.append(String.format(Locale.ROOT,"%02x",n&255));
-        return b.toString();
     }
     public void close(){cipher.close();Arrays.fill(buffer,(byte)0);buffer=new byte[0];failed=true;}
 }

@@ -39,7 +39,7 @@ public final class VideoActivity extends ThemeActivity implements TextureView.Su
         title=new TextView(this);title.setText("HiCar  ·  连接码："+getSharedPreferences("identity",0).getString("pin","未就绪"));
         title.setTextSize(18);title.setTextColor(0xffffffff);title.setPadding(dp(12),dp(10),dp(12),dp(4));root.addView(title);
         micStatus=new TextView(this);micStatus.setTextSize(13);micStatus.setTextColor(0xffa8caff);micStatus.setPadding(dp(12),0,dp(12),dp(4));root.addView(micStatus);
-        surface=new TextureView(this){@Override protected void onMeasure(int widthSpec,int heightSpec){int w=MeasureSpec.getSize(widthSpec),h=MeasureSpec.getSize(heightSpec);if(w*480L>h*800L)w=h*800/480;else h=w*480/800;setMeasuredDimension(w,h);}};
+        surface=new TextureView(this){@Override protected void onMeasure(int widthSpec,int heightSpec){int w=MeasureSpec.getSize(widthSpec),h=MeasureSpec.getSize(heightSpec);if(w*1080L>h*1920L)w=h*1920/1080;else h=w*1080/1920;setMeasuredDimension(w,h);}};
         surface.setOnTouchListener((v,event)->touch(v,event));surface.setSurfaceTextureListener(this);
         FrameLayout area=new FrameLayout(this);area.setBackgroundColor(0xff000000);area.addView(surface,new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER));
         notice=new LinearLayout(this);notice.setOrientation(LinearLayout.VERTICAL);notice.setGravity(Gravity.CENTER);notice.setPadding(dp(20),dp(20),dp(20),dp(20));notice.setBackgroundColor(0xe6000000);notice.setClickable(true);
