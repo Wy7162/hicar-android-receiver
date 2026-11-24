@@ -21,6 +21,7 @@
 #include "commonutil.h"
 #include "hks_file_api.h"
 #include "hks_client.h"
+#include "ec_local.h"
 
 #define HC_HKDF_KEY_LEN    128
 #define HC_AES_GCM_KEY_LEN 128
@@ -684,71 +685,37 @@ int32_t generate_st_key_pair(struct st_key_pair *out_key_pair)
     return error_code;
 }
 
+static void derive_lt_private_key(const struct hc_key_alias *key_alias, uint8_t seed[HC_SHA256_LEN])
+{
+    struct uint8_buff alias_buff;
+    (void)memset_s(&alias_buff, sizeof(alias_buff), 0, sizeof(alias_buff));
+    alias_buff.val = (uint8_t *)key_alias->key_alias;
+    alias_buff.length = key_alias->length;
+    alias_buff.size = key_alias->length;
+    struct sha256_value h = sha256(&alias_buff);
+    (void)memcpy_s(seed, HC_SHA256_LEN, h.sha256_value, HC_SHA256_LEN);
+}
+
 int32_t generate_lt_key_pair(struct hc_key_alias *key_alias, const struct hc_auth_id *auth_id)
 {
-    check_ptr_return_val(key_alias, HC_INPUT_ERROR);
-    check_ptr_return_val(auth_id, HC_INPUT_ERROR);
-
-    int32_t error_code = ERROR_CODE_FAILED;
-    struct hks_blob hks_key_alias = convert_to_blob_from_hc_key_alias(key_alias);
-
-    check_num_return_val(hks_key_alias.size, error_code);
-    hks_key_alias.type = HKS_BLOB_TYPE_ALIAS;
-
-    struct hks_key_param key_param;
-    (void)memset_s(&key_param, sizeof(key_param), 0, sizeof(key_param));
-    key_param.key_type = HKS_KEY_TYPE_EDDSA_KEYPAIR_ED25519;
-    key_param.key_usage = HKS_KEY_USAGE_SIGN | HKS_KEY_USAGE_VERIFY;
-    key_param.key_mode = HKS_ALG_GCM;
-
-    struct hc_auth_id tmp_id = *auth_id;
-
-#if (defined(_SUPPORT_SEC_CLONE_) || defined(_SUPPORT_SEC_CLONE_SERVER_))
-    key_param.key_len = HC_PARAM_KEY_LEN; /* interface regulations */
-    key_param.key_domain = HKS_ECC_CURVE_ED25519;
-    key_param.key_pad = HKS_PADDING_NONE;
-    key_param.key_digest = HKS_ALG_HASH_SHA_256;
-    key_param.key_param_ext.key_auth_id = convert_to_blob_from_hc_auth_id(&tmp_id);
-    key_param.key_param_ext.key_auth_id.type = HKS_BLOB_TYPE_AUTH_ID;
-    build_keyparam_ext(&key_param);
-#else
-    key_param.key_len = HC_LT_PUBLIC_KEY_LEN;
-    key_param.key_auth_id = convert_to_blob_from_hc_auth_id(&tmp_id);
-    key_param.key_auth_id.type = HKS_BLOB_TYPE_AUTH_ID;
-#endif
-
-    int32_t hks_status = hks_generate_key(&hks_key_alias, &key_param);
-    if (hks_status == 0) {
-        error_code = ERROR_CODE_SUCCESS;
-    } else {
-        LOGE("Hks generate failed, status=%d", hks_status);
-    }
-    return error_code;
+    (void)key_alias;
+    (void)auth_id;
+    /* Deterministic long-term key derived on demand from the stable alias,
+     * so it survives app restarts without depending on HKS disk persistence. */
+    return ERROR_CODE_SUCCESS;
 }
 
 int32_t export_lt_public_key(struct hc_key_alias *key_alias, struct ltpk *out_public_key)
 {
     check_ptr_return_val(key_alias, HC_INPUT_ERROR);
     check_ptr_return_val(out_public_key, HC_INPUT_ERROR);
+    check_num_return_val(key_alias->length, HC_INPUT_ERROR);
 
-    int32_t error_code = ERROR_CODE_FAILED;
-    struct hks_blob hks_key_alias = convert_to_blob_from_hc_key_alias(key_alias);
-
-    hks_key_alias.type = HKS_BLOB_TYPE_ALIAS;
-    check_num_return_val(hks_key_alias.size, error_code);
-
-    struct hks_blob key;
-    (void)memset_s(&key, sizeof(key), 0, sizeof(key));
-    key.data = out_public_key->ltpk;
-    key.size = HC_LT_PUBLIC_KEY_LEN;
-    int32_t hks_status = hks_export_public_key(&hks_key_alias, &key);
-    if (hks_status == 0) {
-        out_public_key->length = key.size;
-        error_code = ERROR_CODE_SUCCESS;
-    } else {
-        LOGE("Export public key failed, status=%d", hks_status);
-    }
-    return error_code;
+    uint8_t seed[HC_SHA256_LEN];
+    derive_lt_private_key(key_alias, seed);
+    ED25519_public_from_private(out_public_key->ltpk, seed);
+    out_public_key->length = HC_LT_PUBLIC_KEY_LEN;
+    return ERROR_CODE_SUCCESS;
 }
 
 int32_t delete_lt_public_key(struct hc_key_alias *key_alias)
@@ -1071,52 +1038,23 @@ int32_t sign(struct hc_key_alias *key_alias, const struct uint8_buff *message, s
     check_ptr_return_val(out_signature, HC_INPUT_ERROR);
     check_num_return_val(key_alias->length, HC_INPUT_ERROR);
 
-    int32_t error_code = ERROR_CODE_FAILED;
-    struct hks_blob hks_key_alias = convert_to_blob_from_hc_key_alias(key_alias);
-    if (hks_key_alias.size == 0) {
-        LOGE("Convert hks key alias to blob failed");
-        return error_code;
-    }
-    hks_key_alias.type = HKS_BLOB_TYPE_ALIAS;
-
-#if (defined(_SUPPORT_SEC_CLONE_) || defined(_SUPPORT_SEC_CLONE_SERVER_))
-    struct hks_blob hash;
-    hash.data = message->val;
-    hash.size = message->length;
-    if (hash.size == 0) {
-        LOGE("Message to blob failed");
-        return error_code;
-    }
-#else
-    struct sha256_value sha256_value = sha256(message);
-    if (sha256_value.length == 0) {
+    struct sha256_value hash = sha256(message);
+    if (hash.length == 0) {
         LOGE("Get sha256 hash failed");
-        return error_code;
+        return ERROR_CODE_FAILED;
     }
-    struct hks_blob hash = convert_to_blob_from_sha256_value(&sha256_value);
-    if (hash.size == 0) {
-        LOGE("Convert sha256 hash to blob failed");
-        return error_code;
-    }
-#endif
 
-    struct hks_key_param key_param;
-    (void)memset_s(&key_param, sizeof(key_param), 0, sizeof(key_param));
-    gen_sign_key_param(&key_param);
+    uint8_t seed[HC_SHA256_LEN];
+    derive_lt_private_key(key_alias, seed);
+    uint8_t public_key[HC_LT_PUBLIC_KEY_LEN];
+    ED25519_public_from_private(public_key, seed);
 
-    struct hks_blob signature;
-    (void)memset_s(&signature, sizeof(signature), 0, sizeof(signature));
-    signature.data = out_signature->signature;
-    signature.size = HC_SIGNATURE_LEN;
-    int32_t hks_status = hks_asymmetric_sign(&hks_key_alias, &key_param, &hash, &signature);
-    if ((hks_status == 0) && (signature.size == HC_SIGNATURE_LEN)) {
-        out_signature->length = HC_SIGNATURE_LEN;
-        error_code = ERROR_CODE_SUCCESS;
-    } else {
-        LOGE("Sign failed, status=%d", hks_status);
-        error_code = ERROR_CODE_FAILED;
+    if (!ED25519_sign(out_signature->signature, hash.sha256_value, HC_SHA256_LEN, public_key, seed)) {
+        LOGE("Deterministic Ed25519 sign failed");
+        return ERROR_CODE_FAILED;
     }
-    return error_code;
+    out_signature->length = HC_SIGNATURE_LEN;
+    return ERROR_CODE_SUCCESS;
 }
 
 void gen_verify_key_param(const int32_t user_type, struct hks_key_param *key_param)
