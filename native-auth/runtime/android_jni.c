@@ -92,6 +92,14 @@ JNIEXPORT jint JNICALL Java_local_hicarlab_NativeAuth_checkLtpk(JNIEnv*e,jclass 
  if(alias.length==0)return -1;
  return check_lt_public_key_exist(&alias)==0?1:0;
 }
+JNIEXPORT jstring JNICALL Java_local_hicarlab_NativeAuth_diagLtpkPubHex(JNIEnv*e,jclass c){
+ (void)c;
+ uint8_t pub[32];uint32_t len=0;get_diag_ltpk_pub(pub,&len);
+ static const char h[]="0123456789abcdef";char hex[65];
+ for(uint32_t i=0;i<len&&i<32;i++){hex[i*2]=h[pub[i]>>4];hex[i*2+1]=h[pub[i]&15];}
+ hex[len*2]=0;
+ return (*e)->NewStringUTF(e,hex);
+}
 JNIEXPORT jobjectArray JNICALL Java_local_hicarlab_NativeAuth_step(JNIEnv*e,jclass c,jlong handle,jbyteArray data,jint key_length){
  (void)c;Session*s=(Session*)(intptr_t)handle;if(!s)return NULL;
  if(key_length!=16&&key_length!=32)return NULL;s->params.key_length=key_length;

@@ -62,6 +62,8 @@ enum huks_derived_type {
 
 struct service_id generate_service_id(const struct session_identity *identity);
 
+void get_diag_ltpk_pub(uint8_t *out, uint32_t *len);
+
 /*
  * generate key alias by service id and auth id
  *

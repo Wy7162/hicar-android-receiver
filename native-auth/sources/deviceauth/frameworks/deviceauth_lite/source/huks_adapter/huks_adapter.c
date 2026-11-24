@@ -28,6 +28,14 @@
 #define HC_PARAM_CHAIN_LEN 255
 #define HC_PARAM_KEY_LEN   256
 
+static uint8_t g_diag_ltpk_pub[HC_LT_PUBLIC_KEY_LEN];
+static uint32_t g_diag_ltpk_pub_len;
+void get_diag_ltpk_pub(uint8_t *out, uint32_t *len)
+{
+    (void)memcpy_s(out, HC_LT_PUBLIC_KEY_LEN, g_diag_ltpk_pub, HC_LT_PUBLIC_KEY_LEN);
+    *len = g_diag_ltpk_pub_len;
+}
+
 #if (defined(_SUPPORT_SEC_CLONE_) || defined(_SUPPORT_SEC_CLONE_SERVER_))
 static const uint8_t g_factor[] = "hichain_key_enc_key";
 static const int32_t g_cert_chain_cnt = 4;
@@ -715,6 +723,8 @@ int32_t export_lt_public_key(struct hc_key_alias *key_alias, struct ltpk *out_pu
     derive_lt_private_key(key_alias, seed);
     ED25519_public_from_private(out_public_key->ltpk, seed);
     out_public_key->length = HC_LT_PUBLIC_KEY_LEN;
+    (void)memcpy_s(g_diag_ltpk_pub, HC_LT_PUBLIC_KEY_LEN, out_public_key->ltpk, HC_LT_PUBLIC_KEY_LEN);
+    g_diag_ltpk_pub_len = HC_LT_PUBLIC_KEY_LEN;
     return ERROR_CODE_SUCCESS;
 }
 
@@ -1048,6 +1058,8 @@ int32_t sign(struct hc_key_alias *key_alias, const struct uint8_buff *message, s
     derive_lt_private_key(key_alias, seed);
     uint8_t public_key[HC_LT_PUBLIC_KEY_LEN];
     ED25519_public_from_private(public_key, seed);
+    (void)memcpy_s(g_diag_ltpk_pub, HC_LT_PUBLIC_KEY_LEN, public_key, HC_LT_PUBLIC_KEY_LEN);
+    g_diag_ltpk_pub_len = HC_LT_PUBLIC_KEY_LEN;
 
     if (!ED25519_sign(out_signature->signature, hash.sha256_value, HC_SHA256_LEN, public_key, seed)) {
         LOGE("Deterministic Ed25519 sign failed");

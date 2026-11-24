@@ -82,6 +82,7 @@ final class AuthBusiness implements AutoCloseable {
             }else events.log("STS 请求未携带可比较的身份字段；未记录内容。");
             keyLength=inner.getJSONObject("payload").getInt("keyLength");if(keyLength!=16&&keyLength!=32)throw new IOException("key length");}
         byte[][] packets=NativeAuth.step(handle,inner.toString().getBytes(StandardCharsets.UTF_8),keyLength);
+        events.log("本机长期密钥公钥指纹："+NativeAuth.diagLtpkPubHex()+"。");
         if(packets==null||packets.length<1||packets[0].length!=16)throw new IOException("native response");
         IntBuffer meta=ByteBuffer.wrap(packets[0]).order(ByteOrder.nativeOrder()).asIntBuffer();
         int code=meta.get(0),result=meta.get(1),keyBytes=meta.get(2),error=meta.get(3);
