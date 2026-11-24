@@ -367,7 +367,7 @@ final class ReceiverEngine {
                 if(kind==2&&controlSession.negotiated()&&System.nanoTime()-lastHeartbeat>1000000000L){output.write(controlSession.heartbeat());output.flush();lastHeartbeat=System.nanoTime();}
                 int n;
                 try{n=input.read(buffer);}catch(java.net.SocketTimeoutException e){
-                    if(kind==2){long now=System.nanoTime();if(now-lastPeer>30000000000L)throw e;
+                    if(kind==2){long now=System.nanoTime();if(now-lastPeer>30000000000L&&!session.mediaBusy.get())throw e;
                         if(controlSession.negotiated()&&now-lastHeartbeat>1000000000L){output.write(controlSession.heartbeat());output.flush();lastHeartbeat=now;}
                     }
                     continue;
