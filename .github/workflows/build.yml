@@ -45,34 +45,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends make perl cmake curl
 
-      # 下载并校验固定版本的 mbedtls / openssl / cjson（deviceauth/huks/securec 已随仓库打包）
       - name: Fetch pinned native dependencies
         run: python3 native-auth/fetch-deps.py
 
-      # 交叉编译 ARM64 + ARMv7 原生库到 app/native-libs/lib/
       - name: Build native libraries
         run: python3 native-auth/build-android.py
 
-      # 默认生成开发签名 APK：app/build/HiCarLab-0.11.1-development.apk
       - name: Build APK
         run: bash app/build.sh
-
-      # 可选：用发布 keystore 覆盖签名，得到可直接覆盖安装旧版的 APK。
-      # 在仓库 Settings → Secrets and variables → Actions 添加：
-      #   HICAR_KEYSTORE_B64   release.keystore 的 base64（base64 -w0 release.keystore）
-      #   HICAR_KEY_ALIAS      别名
-      #   HICAR_STORE_PASSWORD / HICAR_KEY_PASSWORD
-      # 未设置这些 secret 时此步跳过，产物仍是开发签名。
-      - name: Release sign (optional)
-        if: ${{ secrets.HICAR_KEYSTORE_B64 != '' }}
-        env:
-          HICAR_STORE_PASSWORD: ${{ secrets.HICAR_STORE_PASSWORD }}
-          HICAR_KEY_PASSWORD: ${{ secrets.HICAR_KEY_PASSWORD }}
-        run: |
-          echo "${{ secrets.HICAR_KEYSTORE_B64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
-          HICAR_KEYSTORE="$RUNNER_TEMP/release.keystore" \
-          HICAR_KEY_ALIAS="${{ secrets.HICAR_KEY_ALIAS }}" \
-            bash app/build.sh
 
       - name: Show artifact info
         run: |
