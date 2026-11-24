@@ -69,7 +69,7 @@ final class HiSightWire implements AutoCloseable {
         if(!start.matches("[A-Z_]+ \\S+ RTSP/1\\.0|RTSP/1\\.0 [1-5][0-9]{2}( [ -~]+)?"))throw new IOException("rtsp start");
         Map<String,String> headers=new LinkedHashMap<>();
         for(int i=1;i<rows.length;i++){
-            int p=rows[i].indexOf(':');if(p<1)throw new IOException("rtsp header");String name=rows[i].substring(0,p).toLowerCase(Locale.ROOT);
+            int p=rows[i].indexOf(':');if(p<1)continue;String name=rows[i].substring(0,p).toLowerCase(Locale.ROOT);
             if(!name.matches("[a-z][a-z0-9-]{0,63}")||headers.put(name,rows[i].substring(p+1).trim())!=null||headers.size()>64)throw new IOException("rtsp duplicate header");
         }
         String seq=headers.get("cseq");if(seq==null||!seq.matches("[0-9]{1,9}"))throw new IOException("rtsp sequence");
