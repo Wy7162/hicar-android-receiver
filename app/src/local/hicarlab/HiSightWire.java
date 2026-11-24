@@ -86,7 +86,7 @@ final class HiSightWire implements AutoCloseable {
         }else if(method.equals("GET_PARAMETER")){
             Set<String> requested=new HashSet<>();for(String row:body.split("\r?\n")){String k=row.split(":",2)[0].trim();if(!k.isEmpty())requested.add(k);}
             Map<String,String> caps=new LinkedHashMap<>();caps.put("his_version","1.0");
-            caps.put("his_video_formats","codecs 1;fps 30;gop 30;bitrate 8000000;vbr-min 3000000;vbr-max 10000000;dpi 160;scr-w 1920;scr-h 1080;width 1920;height 1080");
+            caps.put("his_video_formats","codecs 1;fps 30;gop 30;bitrate 8000000;vbr-min 3000000;vbr-max 10000000;dpi 384;scr-w 1920;scr-h 1080;width 1920;height 1080");
             caps.put("his_device_type","device_type 4;subtype 0;");
             if(inputEnabled)caps.put("his_uibc_capability","input_category_list=GENERIC;generic_cap_list=left_point_down, left_point_up, left_move, left_key_down, left_key_up;");
             StringBuilder answer=new StringBuilder();for(Map.Entry<String,String> c:caps.entrySet())if(requested.contains(c.getKey()))answer.append(c.getKey()).append(": ").append(c.getValue()).append("\r\n");
