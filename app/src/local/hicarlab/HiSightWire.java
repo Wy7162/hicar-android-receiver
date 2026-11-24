@@ -51,6 +51,7 @@ final class HiSightWire implements AutoCloseable {
                 if(size<1||size>65000)throw new IOException("rtsp size");if(buffer.length<size+4)break;
                 byte[] payload=Arrays.copyOfRange(buffer,4,(int)size+4);buffer=Arrays.copyOfRange(buffer,(int)size+4,buffer.length);
                 if(encrypted)payload=cipher.decrypt(payload);
+                events.log("HiSight 报文（已解密）hex="+hex(payload));
                 try{parse(payload,replies);}finally{Arrays.fill(payload,(byte)0);}
             }
             return replies;
@@ -110,6 +111,11 @@ final class HiSightWire implements AutoCloseable {
             if(remote.find()){int input=Integer.parseInt(remote.group(1));if(input<1||input>65535)throw new IOException("rtsp input port");inputPort=input;}
             mediaPort=p;events.log("HiSight 视频端口已协商；仅向本轮已认证手机连接。");
         }
+    }
+    private static String hex(byte[] data){
+        StringBuilder b=new StringBuilder(data.length*2);
+        for(byte n:data)b.append(String.format(Locale.ROOT,"%02x",n&255));
+        return b.toString();
     }
     public void close(){cipher.close();Arrays.fill(buffer,(byte)0);buffer=new byte[0];failed=true;}
 }
