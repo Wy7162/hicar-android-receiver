@@ -246,7 +246,7 @@ final class ReceiverEngine {
                     else if (generation.get() == token) log("FE36 认证后收到 " + n + " 字节；未记录内容，等待后续实现。");
                 }
             }
-        } catch (Exception e) { if (generation.get() == token) log((control ? "FE35 协商" : "FE36 认证") + " 结束：" + e.getClass().getSimpleName() + "；未确认成功时请勿视为已连接。"); }
+        } catch (Exception e) { if (generation.get() == token) log((control ? "FE35 协商" : "FE36 认证") + " 结束：" + (e instanceof IOException ? classifyIo((IOException)e) : e.getClass().getSimpleName()) + "；未确认成功时请勿视为已连接。"); }
         finally {
             if (auth != null) auth.close(); if (!control) authBusy.set(false);
             if(!control && !session.authenticated && generation.get()==token)status.issue(token,"连接验证未完成，请在手机重试，或点重新连接。");
@@ -306,7 +306,7 @@ final class ReceiverEngine {
                 if(kind==2&&!session.controlBusy.compareAndSet(false,true)){socket.close();log("已有本轮 DMSDP 控制连接，拒绝重复连接。");continue;}
                 if(kind==2)status.advance(token,ReceiverStatus.Stage.MEDIA);
                 tcpClients.add(socket);
-                log("收到手机 TCP 连接：阶段 " + kind + "（0 网络控制，1 DMSDP 入口，2 DMSDP 控制）。");
+                log("收到手机 TCP 连接：阶段 " + kind + "（0 网络控制，1 DMSDP 入口，2 DMSDP 控制），远端 " + socket.getInetAddress().getHostAddress() + ":" + socket.getPort() + "。");
                 new Thread(() -> receiveTcp(socket, session, token, kind), "lab-tcp-rx").start();
             }
         } catch (IOException e) { if (generation.get() == token) {log("TCP 监听结束：I/O 错误。"); requestReconnect(token,session.model); } }
@@ -341,6 +341,28 @@ final class ReceiverEngine {
                 },selectedAudio,selectedMicrophone),audioControl);}finally{Arrays.fill(key,(byte)0);}
                 output.write(controlSession.initial());output.flush();log("DMSDP OPTIONS 首包已发送，使用本轮认证密钥协商 AES-CTR；未发送媒体能力。");
             }
+            if (kind == 0 && session.network != null) {
+                // 计划 A：网络控制通道不再被动等待手机先发。先探测 1.5 秒——若手机已先发数据，按原被动流程解析；
+                // 若手机静默，则车机主动通告数据 socket，打破双方互相等待（否则手机连接后 14 秒左右自行断开）。
+                socket.setSoTimeout(1500);
+                int probe = 0;
+                try { probe = input.read(buffer); } catch (java.net.SocketTimeoutException silent) { }
+                if (probe > 0) {
+                    log("阶段 0 手机先发 " + probe + " 字节，按被动流程处理。");
+                    for (NearbyWire.Frame frame : decoder.feed(buffer, probe)) {
+                        if (frame.kind == 4 || frame.kind == 33) replyNetwork(frame, session.network, output);
+                        else { byte[] reply = negotiator.respond(frame); if (reply != null) { output.write(reply); output.flush(); } }
+                        log("TCP 网络控制帧：类型 " + frame.kind + "，载荷 " + frame.payload.length + " 字节。");
+                    }
+                } else if (probe == 0) {
+                    byte[] announce = NearbyWire.pack(4, NearbyWire.tlv(4, NearbyWire.join(
+                            NearbyWire.uint(0), NearbyWire.uint(session.network.dataPort),
+                            NearbyWire.uint(3), NearbyWire.uint(20), NearbyWire.uint(0), NearbyWire.uint(1))));
+                    output.write(announce); output.flush();
+                    log("阶段 0 手机静默（探测读超时），车机主动通告数据 socket：端口 " + session.network.dataPort + "，帧 " + hex(announce) + "。");
+                }
+                socket.setSoTimeout(1000);
+            }
             while (generation.get() == token) {
                 if(kind==2&&controlSession.negotiated()&&System.nanoTime()-lastHeartbeat>1000000000L){output.write(controlSession.heartbeat());output.flush();lastHeartbeat=System.nanoTime();}
                 int n;
@@ -361,8 +383,22 @@ final class ReceiverEngine {
                     log("DMSDP 入口协商已响应；等待独立控制连接。");
                 } else {for(byte[] reply:controlSession.feed(buffer,n)){output.write(reply);output.flush();}}
             }
-        } catch (IOException | java.security.GeneralSecurityException e) { if (generation.get() == token) log("TCP 阶段 " + kind + " 结束：" + e.getClass().getSimpleName()); }
+        } catch (java.net.SocketTimeoutException e) { if (generation.get() == token) log("TCP 阶段 " + kind + " 结束：读超时（手机静默）。"); }
+        catch (IOException e) { if (generation.get() == token) log("TCP 阶段 " + kind + " 结束：" + classifyIo(e)); }
+        catch (java.security.GeneralSecurityException e) { if (generation.get() == token) log("TCP 阶段 " + kind + " 结束：" + e.getClass().getSimpleName()); }
         finally {if(microphone!=null){microphone.close();microphones.remove(microphone);}if(audioReceiver!=null){audioReceiver.close();audioReceivers.remove(audioReceiver);}if(controlSession!=null)controlSession.close();if(kind==2)session.controlBusy.set(false);tcpClients.remove(socket); try {socket.close();} catch (IOException ignored) {}if(kind==2)requestReconnect(token, session.model);}
+    }
+    private static String classifyIo(IOException e) {
+        if (e instanceof java.net.SocketTimeoutException) return "读超时（手机静默）";
+        String m = e.getMessage();
+        if (m != null && m.toLowerCase(Locale.ROOT).contains("reset")) return "对端重置（Connection reset）";
+        if (e instanceof java.net.SocketException && m != null && m.toLowerCase(Locale.ROOT).contains("closed")) return "本端已关闭（Socket closed）";
+        return e.getClass().getSimpleName() + (m == null ? "" : "：" + m);
+    }
+    private static String hex(byte[] data) {
+        StringBuilder b = new StringBuilder(data.length * 2);
+        for (byte n : data) b.append(String.format(Locale.ROOT, "%02x", n & 255));
+        return b.toString();
     }
     private void startHiSight(TestSession session,int token,int port)throws IOException{
         VideoSink sink=((LabApplication)context).video();
